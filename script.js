@@ -39,26 +39,17 @@ function loadExcelFile(filename) {
 function parseExcelData(data) {
     try {
         const workbook = XLSX.read(data, { type: 'array' });
-        
-        // Ищем вкладку с комиссиями по разным возможным названиям
         const sheetNames = workbook.SheetNames;
-        let commissionSheet = null;
         
-        // Пробуем найти вкладку с комиссиями
-        for (let name of sheetNames) {
-            if (name.includes('Комиссии') || name.includes('комиссии') || 
-                name.includes('Commission') || name.includes('commission')) {
-                commissionSheet = workbook.Sheets[name];
-                break;
-            }
-        }
+        // Находим актуальную вкладку на основе дат
+        const commissionSheet = findActualCommissionSheet(sheetNames, workbook);
         
-        // Если не нашли, берем первую вкладку
         if (!commissionSheet) {
-            commissionSheet = workbook.Sheets[sheetNames[0]];
+            showNotification('Не найдена подходящая вкладка с комиссиями', 'error');
+            return;
         }
-        
-        const jsonData = XLSX.utils.sheet_to_json(commissionSheet, { header: 1 });
+
+        const jsonData = XLSX.utils.sheet_to_json(commissionSheet.sheet, { header: 1 });
         
         if (jsonData.length > 1) {
             const headers = jsonData[0];
@@ -71,11 +62,61 @@ function parseExcelData(data) {
             });
             
             populateCategories();
-            showNotification('Тарифы успешно загружены', 'success');
+            showNotification(`Загружены тарифы из вкладки: ${commissionSheet.name}`, 'success');
         }
     } catch (error) {
         showNotification('Ошибка при чтении файла тарифов', 'error');
     }
+}
+
+function findActualCommissionSheet(sheetNames, workbook) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let actualSheet = null;
+    let actualSheetDate = null;
+    
+    // Регулярное выражение для поиска дат в формате DD.MM.YYYY
+    const dateRegex = /(\d{1,2})\.(\d{1,2})\.(\d{4})/;
+    
+    sheetNames.forEach(sheetName => {
+        // Ищем вкладки, которые содержат "Комиссии с" или "Комиссия с"
+        if (sheetName.includes('Комиссии с') || sheetName.includes('Комиссия с')) {
+            const match = sheetName.match(dateRegex);
+            
+            if (match) {
+                const [, day, month, year] = match;
+                // Создаем дату из найденных компонентов (месяц в JS от 0 до 11)
+                const sheetDate = new Date(year, month - 1, day);
+                sheetDate.setHours(0, 0, 0, 0);
+                
+                // Проверяем, что дата вкладки не превышает текущую дату
+                if (sheetDate <= today) {
+                    // Выбираем самую актуальную вкладку (с самой поздней датой)
+                    if (!actualSheetDate || sheetDate > actualSheetDate) {
+                        actualSheetDate = sheetDate;
+                        actualSheet = {
+                            name: sheetName,
+                            sheet: workbook.Sheets[sheetName],
+                            date: sheetDate
+                        };
+                    }
+                }
+            }
+        }
+    });
+    
+    // Если не нашли подходящую вкладку, используем первую
+    if (!actualSheet && sheetNames.length > 0) {
+        actualSheet = {
+            name: sheetNames[0],
+            sheet: workbook.Sheets[sheetNames[0]],
+            date: null
+        };
+        showNotification('Используется первая вкладка (актуальная не найдена)', 'warning');
+    }
+    
+    return actualSheet;
 }
 
 function populateCategories() {
@@ -105,7 +146,6 @@ function updateVolume() {
 }
 
 function calculate() {
-    // Основные параметры
     const category = document.getElementById('category').value;
     const price = parseFloat(document.getElementById('price').value);
     const purchasePrice = parseFloat(document.getElementById('purchasePrice').value);
@@ -129,26 +169,24 @@ function calculate() {
     const commissionAmount = price * commissionPercent / 100;
 
     // Расчет дополнительных расходов
-    const acquiringAmount = price * 0.015; // Эквайринг 1.5%
+    const acquiringAmount = price * 0.015;
     const advertisingAmount = price * advertisingPercent / 100;
     
-    // Расчет логистики (упрощенная модель)
+    // Расчет логистики
     const logisticCost = calculateLogistic(weight);
-    const customerDelivery = 25; // Базовая доставка до клиента
+    const customerDelivery = 25;
     const totalLogistic = logisticCost + customerDelivery;
 
     // Итоговые расчеты
     const totalOzonExpenses = commissionAmount + acquiringAmount + advertisingAmount + totalLogistic;
     const revenueAfterOzon = price - totalOzonExpenses;
-    const tax = revenueAfterOzon * 0.06; // Налог УСН 6%
+    const tax = revenueAfterOzon * 0.06;
     const profitPerUnit = revenueAfterOzon - costPrice - tax;
     const margin = (profitPerUnit / price) * 100;
     
-    // Расчет для всей партии с учетом процента выкупа
     const expectedSales = Math.round(quantity * redemptionRate / 100);
     const batchProfit = profitPerUnit * expectedSales;
 
-    // Отображение результатов
     displayResults(
         purchasePrice, deliveryCost, packagingCost, costPrice,
         commissionAmount, commissionPercent, acquiringAmount, advertisingAmount,
@@ -156,7 +194,6 @@ function calculate() {
         price, totalOzonExpenses, tax, profitPerUnit, margin, batchProfit
     );
 
-    // Сохранение в историю
     saveToHistory(category, price, purchasePrice, profitPerUnit, quantity, batchProfit);
 }
 
@@ -211,13 +248,12 @@ function calculateCommission(tariff, price) {
 }
 
 function calculateLogistic(weight) {
-    // Упрощенный расчет логистики на основе веса
     if (weight <= 0.5) return 40;
     if (weight <= 1) return 50;
     if (weight <= 2) return 70;
     if (weight <= 5) return 120;
     if (weight <= 10) return 200;
-    return 300; // свыше 10 кг
+    return 300;
 }
 
 function displayResults(
@@ -226,24 +262,20 @@ function displayResults(
     logisticCost, customerDelivery, totalLogistic,
     price, totalOzonExpenses, tax, profitPerUnit, margin, batchProfit
 ) {
-    // Себестоимость
     document.getElementById('resultPurchase').textContent = `${purchasePrice.toLocaleString('ru-RU')} ₽`;
     document.getElementById('resultDelivery').textContent = `${deliveryCost.toLocaleString('ru-RU')} ₽`;
     document.getElementById('resultPackaging').textContent = `${packagingCost.toLocaleString('ru-RU')} ₽`;
     document.getElementById('resultCostPrice').textContent = `${costPrice.toLocaleString('ru-RU')} ₽`;
     
-    // Расходы Ozon
     document.getElementById('resultCommission').textContent = 
         `${commissionAmount.toLocaleString('ru-RU')} ₽ (${commissionPercent.toFixed(2)}%)`;
     document.getElementById('resultAcquiring').textContent = `${acquiringAmount.toLocaleString('ru-RU')} ₽`;
     document.getElementById('resultAdvertising').textContent = `${advertisingAmount.toLocaleString('ru-RU')} ₽`;
     
-    // Логистика
     document.getElementById('resultLogistic').textContent = `${logisticCost.toLocaleString('ru-RU')} ₽`;
     document.getElementById('resultCustomerDelivery').textContent = `${customerDelivery.toLocaleString('ru-RU')} ₽`;
     document.getElementById('resultTotalLogistic').textContent = `${totalLogistic.toLocaleString('ru-RU')} ₽`;
     
-    // Итоги
     document.getElementById('resultRevenue').textContent = `${price.toLocaleString('ru-RU')} ₽`;
     document.getElementById('resultTotalExpenses').textContent = `${totalOzonExpenses.toLocaleString('ru-RU')} ₽`;
     document.getElementById('resultTax').textContent = `${tax.toLocaleString('ru-RU')} ₽`;
