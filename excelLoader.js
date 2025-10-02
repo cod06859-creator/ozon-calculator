@@ -1,3 +1,5 @@
+let volumeTariffs = [];
+
 function loadExcelFile(filename) {
     fetch(filename)
         .then(response => {
@@ -38,8 +40,83 @@ function parseExcelData(data) {
             populateCategories();
             showNotification(`Загружены тарифы из вкладки: ${commissionSheet.name}`, 'success');
         }
+
+        // Парсим вкладку "Справочник" для тарифов логистики по объему
+        parseReferenceSheet(workbook);
+
     } catch (error) {
         showNotification('Ошибка при чтении файла тарифов', 'error');
+    }
+}
+
+function parseReferenceSheet(workbook) {
+    try {
+        const referenceSheet = workbook.Sheets['Справочник'];
+        if (!referenceSheet) {
+            showNotification('Не найдена вкладка "Справочник"', 'warning');
+            return;
+        }
+
+        const jsonData = XLSX.utils.sheet_to_json(referenceSheet, { header: 1 });
+        
+        // Ищем строку с заголовками "Нижняя граница объёма (л)" и "Тариф, ₽"
+        let headersIndex = -1;
+        let volumeCol = -1;
+        let tariffCol = -1;
+
+        for (let i = 0; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (Array.isArray(row)) {
+                for (let j = 0; j < row.length; j++) {
+                    const cell = row[j];
+                    if (typeof cell === 'string') {
+                        if (cell.includes('Нижняя граница объёма') || cell.includes('объёма (л)')) {
+                            volumeCol = j;
+                        }
+                        if (cell.includes('Тариф') && cell.includes('₽')) {
+                            tariffCol = j;
+                        }
+                    }
+                }
+                
+                if (volumeCol !== -1 && tariffCol !== -1) {
+                    headersIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (headersIndex === -1) {
+            showNotification('Не найдены заголовки тарифов логистики в справочнике', 'warning');
+            return;
+        }
+
+        // Парсим данные тарифов
+        volumeTariffs = [];
+        for (let i = headersIndex + 1; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (Array.isArray(row) && row[volumeCol] !== undefined && row[tariffCol] !== undefined) {
+                const lowerBound = parseFloat(String(row[volumeCol]).replace(',', '.').trim());
+                const tariff = parseFloat(String(row[tariffCol]).replace(',', '.').trim());
+                
+                if (!isNaN(lowerBound) && !isNaN(tariff)) {
+                    volumeTariffs.push({
+                        lowerBound: lowerBound,
+                        tariff: tariff
+                    });
+                }
+            }
+        }
+
+        // Сортируем по возрастанию нижней границы
+        volumeTariffs.sort((a, b) => a.lowerBound - b.lowerBound);
+
+        console.log('Загружены тарифы логистики по объему:', volumeTariffs);
+        showNotification(`Загружено ${volumeTariffs.length} тарифов логистики по объему`, 'success');
+
+    } catch (error) {
+        console.error('Ошибка при парсинге справочника:', error);
+        showNotification('Ошибка при загрузке тарифов логистики', 'warning');
     }
 }
 
@@ -110,3 +187,7 @@ function populateCategories() {
         categorySelect.appendChild(option);
     });
 }
+
+// Экспортируем глобальные переменные
+window.tariffData = tariffData;
+window.volumeTariffs = volumeTariffs;

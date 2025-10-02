@@ -1,9 +1,13 @@
 function updateVolume() {
-    const length = parseFloat(document.getElementById('length').value) || 0;
-    const width = parseFloat(document.getElementById('width').value) || 0;
-    const height = parseFloat(document.getElementById('height').value) || 0;
-    const volume = (length * width * height) / 1000;
+    const volume = getVolume();
     document.getElementById('volumeValue').textContent = volume.toFixed(1);
+    
+    // Показываем расчетный тариф логистики, если тарифы загружены
+    if (volumeTariffs && volumeTariffs.length > 0) {
+        const logisticCost = calculateLogisticByVolume(volume);
+        // Можно добавить отображение предварительного расчета, если нужно
+        // Например: показать всплывающую подсказку с расчетным тарифом
+    }
 }
 
 function resetForm() {

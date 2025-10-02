@@ -25,8 +25,9 @@ function calculate() {
     const acquiringAmount = price * 0.015;
     const advertisingAmount = price * advertisingPercent / 100;
     
-    // Расчет логистики
-    const logisticCost = calculateLogistic(weight);
+    // Расчет логистики по объему
+    const volume = getVolume();
+    const logisticCost = calculateLogisticByVolume(volume);
     const customerDelivery = 25;
     const totalLogistic = logisticCost + customerDelivery;
 
@@ -48,6 +49,43 @@ function calculate() {
     );
 
     saveToHistory(category, price, purchasePrice, profitPerUnit, quantity, batchProfit);
+}
+
+function getVolume() {
+    const length = parseFloat(document.getElementById('length').value) || 0;
+    const width = parseFloat(document.getElementById('width').value) || 0;
+    const height = parseFloat(document.getElementById('height').value) || 0;
+    return (length * width * height) / 1000;
+}
+
+function calculateLogisticByVolume(volume) {
+    if (!volumeTariffs || volumeTariffs.length === 0) {
+        showNotification('Тарифы логистики по объему не загружены. Используется расчет по весу.', 'warning');
+        return calculateLogisticByWeight(volume); // fallback на расчет по весу
+    }
+
+    // Находим подходящий тариф для объема
+    let applicableTariff = volumeTariffs[0]?.tariff || 0;
+    
+    for (const tariff of volumeTariffs) {
+        if (volume >= tariff.lowerBound) {
+            applicableTariff = tariff.tariff;
+        } else {
+            break;
+        }
+    }
+    
+    return applicableTariff;
+}
+
+function calculateLogisticByWeight(weight) {
+    // Резервная функция расчета по весу (на случай если не загружены тарифы по объему)
+    if (weight <= 0.5) return 40;
+    if (weight <= 1) return 50;
+    if (weight <= 2) return 70;
+    if (weight <= 5) return 120;
+    if (weight <= 10) return 200;
+    return 300;
 }
 
 function validateInputs(category, price, purchasePrice, quantity) {
@@ -98,15 +136,6 @@ function calculateCommission(tariff, price) {
         .trim();
     
     return parseFloat(commissionStr) || 15;
-}
-
-function calculateLogistic(weight) {
-    if (weight <= 0.5) return 40;
-    if (weight <= 1) return 50;
-    if (weight <= 2) return 70;
-    if (weight <= 5) return 120;
-    if (weight <= 10) return 200;
-    return 300;
 }
 
 function displayResults(
