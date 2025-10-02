@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Калькулятор продаж</title>
+    <title>Калькулятор продаж - Расчет прибыли и затрат</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header class="header">
-            <h1>Калькулятор продаж</h1>
-            <p>Рассчитайте прибыль и затраты для схем FBO и FBS</p>
+            <h1>Сколько можно заработать на маркетплейсе?</h1>
+            <p>Рассчитайте примерные затраты и прибыль сразу для схемы FBO и FBS</p>
         </header>
 
         <div class="calculator">
@@ -31,7 +31,7 @@
                     </div>
 
                     <div class="input-group">
-                        <label for="quantity">Количество, шт</label>
+                        <label for="quantity">Количество в заказе, шт</label>
                         <input type="number" id="quantity" value="1" min="1" required>
                     </div>
 
@@ -43,25 +43,34 @@
                     <div class="dimensions">
                         <h4>Габариты</h4>
                         <div class="dimension-inputs">
-                            <input type="number" id="length" placeholder="Длина, см">
-                            <input type="number" id="width" placeholder="Ширина, см">
-                            <input type="number" id="height" placeholder="Высота, см">
+                            <div class="dimension">
+                                <label>Длина, см</label>
+                                <input type="number" id="length" placeholder="30">
+                            </div>
+                            <div class="dimension">
+                                <label>Ширина, см</label>
+                                <input type="number" id="width" placeholder="20">
+                            </div>
+                            <div class="dimension">
+                                <label>Высота, см</label>
+                                <input type="number" id="height" placeholder="15">
+                            </div>
                         </div>
-                        <div class="volume">Объём: <span id="volumeValue">0</span> л</div>
+                        <div class="volume">Объём товара: <span id="volumeValue">0</span> л</div>
                     </div>
                 </div>
 
                 <div class="actions">
-                    <button type="button" id="calculateBtn" class="primary-btn">Рассчитать</button>
-                    <button type="button" id="resetBtn" class="secondary-btn">Сбросить</button>
+                    <button type="button" id="calculateBtn" class="primary-btn">Пересчитать</button>
+                    <button type="button" id="resetBtn" class="secondary-btn">Сбросить настройки</button>
                 </div>
             </div>
 
             <div class="right-panel">
                 <div class="results-section">
                     <div class="results-header">
-                        <h2>Результаты расчета</h2>
-                        <button type="button" id="exportBtn" class="export-btn">Экспорт</button>
+                        <h2>Расчёт прибыли и затрат</h2>
+                        <button type="button" id="exportBtn" class="export-btn">Скачать расчёт</button>
                     </div>
 
                     <div class="scheme-tabs">
@@ -75,7 +84,7 @@
                             <span id="resultPrice">0 ₽</span>
                         </div>
                         <div class="result-item">
-                            <span>Комиссия</span>
+                            <span>Вознаграждение маркетплейса</span>
                             <span id="resultCommission">-0 ₽</span>
                         </div>
                         <div class="result-item">
@@ -87,11 +96,11 @@
                             <span id="resultStorage">-0 ₽</span>
                         </div>
                         <div class="result-item total-costs">
-                            <span>Всего затрат</span>
+                            <span>Затраты за шт</span>
                             <span id="resultTotalCosts">-0 ₽</span>
                         </div>
                         <div class="result-item profit">
-                            <span>Чистая прибыль</span>
+                            <span>К начислению за товар</span>
                             <span id="resultProfit">0 ₽</span>
                         </div>
                         <div class="result-percentage">
@@ -113,11 +122,12 @@
                                     <th>Дата</th>
                                 </tr>
                             </thead>
-                            <tbody id="historyBody"></tbody>
+                            <tbody id="historyBody">
+                            </tbody>
                         </table>
                     </div>
                     <div class="history-actions">
-                        <button type="button" id="clearHistoryBtn" class="secondary-btn">Очистить</button>
+                        <button type="button" id="clearHistoryBtn" class="secondary-btn">Очистить историю</button>
                         <button type="button" id="exportHistoryBtn" class="secondary-btn">Экспорт истории</button>
                     </div>
                 </div>
