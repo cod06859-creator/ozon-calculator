@@ -3,109 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Калькулятор продаж - Расчет прибыли и затрат</title>
+    <title>Калькулятор продаж - Профессиональная версия</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header class="header">
-            <h1>Сколько можно заработать на маркетплейсе?</h1>
-            <p>Рассчитайте примерные затраты и прибыль сразу для схемы FBO и FBS</p>
+            <h1>Профессиональный калькулятор продаж</h1>
+            <p>Расчет прибыли по схеме FBO с учетом всех затрат</p>
         </header>
 
         <div class="calculator">
             <div class="left-panel">
                 <div class="section">
-                    <h3>Параметры товара</h3>
+                    <h3>Основные параметры</h3>
                     <div class="input-group">
-                        <label for="category">Категория</label>
+                        <label for="category">Категория товара</label>
                         <select id="category" required>
                             <option value="">Выберите категорию</option>
                         </select>
                     </div>
 
                     <div class="input-group">
-                        <label for="price">Цена, ₽</label>
+                        <label for="price">Цена продажи, ₽</label>
                         <input type="number" id="price" placeholder="1000" required>
                     </div>
 
                     <div class="input-group">
-                        <label for="quantity">Количество в заказе, шт</label>
+                        <label for="purchasePrice">Закупочная цена, ₽</label>
+                        <input type="number" id="purchasePrice" placeholder="500" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="deliveryCost">Доставка от поставщика, ₽</label>
+                        <input type="number" id="deliveryCost" placeholder="50">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="packagingCost">Упаковка и ФФ, ₽</label>
+                        <input type="number" id="packagingCost" placeholder="30">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>Логистические параметры</h3>
+                    <div class="input-group">
+                        <label for="quantity">Количество в партии, шт</label>
                         <input type="number" id="quantity" value="1" min="1" required>
                     </div>
 
                     <div class="input-group">
-                        <label for="weight">Вес, кг</label>
-                        <input type="number" id="weight" placeholder="2" step="0.1">
+                        <label for="weight">Вес единицы, кг</label>
+                        <input type="number" id="weight" placeholder="1.5" step="0.1">
                     </div>
 
                     <div class="dimensions">
-                        <h4>Габариты</h4>
+                        <h4>Габариты товара (см)</h4>
                         <div class="dimension-inputs">
                             <div class="dimension">
-                                <label>Длина, см</label>
-                                <input type="number" id="length" placeholder="30">
+                                <input type="number" id="length" placeholder="Длина">
                             </div>
                             <div class="dimension">
-                                <label>Ширина, см</label>
-                                <input type="number" id="width" placeholder="20">
+                                <input type="number" id="width" placeholder="Ширина">
                             </div>
                             <div class="dimension">
-                                <label>Высота, см</label>
-                                <input type="number" id="height" placeholder="15">
+                                <input type="number" id="height" placeholder="Высота">
                             </div>
                         </div>
-                        <div class="volume">Объём товара: <span id="volumeValue">0</span> л</div>
+                        <div class="volume">Объём: <span id="volumeValue">0</span> л</div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="redemptionRate">Процент выкупа, %</label>
+                        <input type="number" id="redemptionRate" value="80" min="0" max="100" step="1">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="advertisingPercent">Расходы на рекламу, %</label>
+                        <input type="number" id="advertisingPercent" value="5" min="0" step="0.1">
                     </div>
                 </div>
 
                 <div class="actions">
-                    <button type="button" id="calculateBtn" class="primary-btn">Пересчитать</button>
-                    <button type="button" id="resetBtn" class="secondary-btn">Сбросить настройки</button>
+                    <button type="button" id="calculateBtn" class="primary-btn">Рассчитать прибыль</button>
+                    <button type="button" id="resetBtn" class="secondary-btn">Сбросить все</button>
                 </div>
             </div>
 
             <div class="right-panel">
                 <div class="results-section">
-                    <div class="results-header">
-                        <h2>Расчёт прибыли и затрат</h2>
-                        <button type="button" id="exportBtn" class="export-btn">Скачать расчёт</button>
+                    <h2>Детальный расчет прибыли</h2>
+                    
+                    <div class="results-grid">
+                        <div class="result-category">
+                            <h3>Себестоимость</h3>
+                            <div class="result-item">
+                                <span>Закупочная цена</span>
+                                <span id="resultPurchase">0 ₽</span>
+                            </div>
+                            <div class="result-item">
+                                <span>Доставка от поставщика</span>
+                                <span id="resultDelivery">0 ₽</span>
+                            </div>
+                            <div class="result-item">
+                                <span>Упаковка и ФФ</span>
+                                <span id="resultPackaging">0 ₽</span>
+                            </div>
+                            <div class="result-item total">
+                                <span>Итого себестоимость</span>
+                                <span id="resultCostPrice">0 ₽</span>
+                            </div>
+                        </div>
+
+                        <div class="result-category">
+                            <h3>Расходы Ozon</h3>
+                            <div class="result-item">
+                                <span>Комиссия Ozon</span>
+                                <span id="resultCommission">0 ₽ (0%)</span>
+                            </div>
+                            <div class="result-item">
+                                <span>Эквайринг (1.5%)</span>
+                                <span id="resultAcquiring">0 ₽</span>
+                            </div>
+                            <div class="result-item">
+                                <span>Реклама</span>
+                                <span id="resultAdvertising">0 ₽</span>
+                            </div>
+                        </div>
+
+                        <div class="result-category">
+                            <h3>Логистика Ozon</h3>
+                            <div class="result-item">
+                                <span>Логистика</span>
+                                <span id="resultLogistic">0 ₽</span>
+                            </div>
+                            <div class="result-item">
+                                <span>Доставка до клиента</span>
+                                <span id="resultCustomerDelivery">0 ₽</span>
+                            </div>
+                            <div class="result-item total">
+                                <span>Всего логистика</span>
+                                <span id="resultTotalLogistic">0 ₽</span>
+                            </div>
+                        </div>
+
+                        <div class="result-category">
+                            <h3>Итоги расчета</h3>
+                            <div class="result-item">
+                                <span>Выручка</span>
+                                <span id="resultRevenue">0 ₽</span>
+                            </div>
+                            <div class="result-item">
+                                <span>Всего расходов Ozon</span>
+                                <span id="resultTotalExpenses">0 ₽</span>
+                            </div>
+                            <div class="result-item">
+                                <span>Налог УСН 6%</span>
+                                <span id="resultTax">0 ₽</span>
+                            </div>
+                            <div class="result-item profit">
+                                <span>Чистая прибыль за единицу</span>
+                                <span id="resultProfitPerUnit">0 ₽</span>
+                            </div>
+                            <div class="result-item profit">
+                                <span>Маржинальность</span>
+                                <span id="resultMargin">0%</span>
+                            </div>
+                            <div class="result-item profit">
+                                <span>Прибыль со всей партии</span>
+                                <span id="resultBatchProfit">0 ₽</span>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="scheme-tabs">
-                        <button class="tab active" data-scheme="fbo">FBO</button>
-                        <button class="tab" data-scheme="fbs">FBS</button>
-                    </div>
-
-                    <div class="results-content">
-                        <div class="result-item">
-                            <span>Цена товара</span>
-                            <span id="resultPrice">0 ₽</span>
-                        </div>
-                        <div class="result-item">
-                            <span>Вознаграждение маркетплейса</span>
-                            <span id="resultCommission">-0 ₽</span>
-                        </div>
-                        <div class="result-item">
-                            <span>Логистика</span>
-                            <span id="resultLogistic">-0 ₽</span>
-                        </div>
-                        <div class="result-item">
-                            <span>Хранение</span>
-                            <span id="resultStorage">-0 ₽</span>
-                        </div>
-                        <div class="result-item total-costs">
-                            <span>Затраты за шт</span>
-                            <span id="resultTotalCosts">-0 ₽</span>
-                        </div>
-                        <div class="result-item profit">
-                            <span>К начислению за товар</span>
-                            <span id="resultProfit">0 ₽</span>
-                        </div>
-                        <div class="result-percentage">
-                            <span id="resultPercentage">0%</span>
-                        </div>
+                    <div class="export-actions">
+                        <button type="button" id="exportBtn" class="export-btn">Экспорт расчета в Excel</button>
                     </div>
                 </div>
 
@@ -117,13 +190,13 @@
                                 <tr>
                                     <th>Категория</th>
                                     <th>Цена</th>
-                                    <th>Кол-во</th>
-                                    <th>Прибыль</th>
+                                    <th>Закуп</th>
+                                    <th>Прибыль/ед</th>
+                                    <th>Партия</th>
                                     <th>Дата</th>
                                 </tr>
                             </thead>
-                            <tbody id="historyBody">
-                            </tbody>
+                            <tbody id="historyBody"></tbody>
                         </table>
                     </div>
                     <div class="history-actions">
