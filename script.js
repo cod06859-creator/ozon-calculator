@@ -1,37 +1,115 @@
+// Константы приложения
+const APP_CONFIG = {
+    TAX_RATE: 0.06,
+    ACQUIRING_RATE: 0.015,
+    CUSTOMER_DELIVERY: 25,
+    MAX_HISTORY_SIZE: 100,
+    LOGISTIC_TIERS: [
+        { maxWeight: 0.5, cost: 40 },
+        { maxWeight: 1, cost: 50 },
+        { maxWeight: 2, cost: 70 },
+        { maxWeight: 5, cost: 120 },
+        { maxWeight: 10, cost: 200 },
+        { maxWeight: Infinity, cost: 300 }
+    ]
+};
+
+// Кэш DOM элементов
+const elements = {
+    category: null,
+    price: null,
+    purchasePrice: null,
+    deliveryCost: null,
+    packagingCost: null,
+    quantity: null,
+    weight: null,
+    length: null,
+    width: null,
+    height: null,
+    redemptionRate: null,
+    advertisingPercent: null,
+    volumeValue: null,
+    calculateBtn: null,
+    resetBtn: null,
+    clearHistoryBtn: null,
+    exportBtn: null,
+    exportHistoryBtn: null,
+    historyBody: null
+};
+
+// Данные приложения
 let tariffData = [];
 let calculationHistory = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
-    setupEventListeners();
-    loadCalculationHistory();
 });
 
 function initializeApp() {
+    cacheDOMElements();
+    setupEventListeners();
+    loadCalculationHistory();
     loadExcelFile('tariffs.xlsx');
     updateVolume();
 }
 
+function cacheDOMElements() {
+    elements.category = document.getElementById('category');
+    elements.price = document.getElementById('price');
+    elements.purchasePrice = document.getElementById('purchasePrice');
+    elements.deliveryCost = document.getElementById('deliveryCost');
+    elements.packagingCost = document.getElementById('packagingCost');
+    elements.quantity = document.getElementById('quantity');
+    elements.weight = document.getElementById('weight');
+    elements.length = document.getElementById('length');
+    elements.width = document.getElementById('width');
+    elements.height = document.getElementById('height');
+    elements.redemptionRate = document.getElementById('redemptionRate');
+    elements.advertisingPercent = document.getElementById('advertisingPercent');
+    elements.volumeValue = document.getElementById('volumeValue');
+    elements.calculateBtn = document.getElementById('calculateBtn');
+    elements.resetBtn = document.getElementById('resetBtn');
+    elements.clearHistoryBtn = document.getElementById('clearHistoryBtn');
+    elements.exportBtn = document.getElementById('exportBtn');
+    elements.exportHistoryBtn = document.getElementById('exportHistoryBtn');
+    elements.historyBody = document.getElementById('historyBody');
+}
+
 function setupEventListeners() {
-    document.getElementById('calculateBtn').addEventListener('click', calculate);
-    document.getElementById('resetBtn').addEventListener('click', resetForm);
-    document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
-    document.getElementById('exportBtn').addEventListener('click', exportCalculation);
-    document.getElementById('exportHistoryBtn').addEventListener('click', exportHistory);
+    elements.calculateBtn.addEventListener('click', calculate);
+    elements.resetBtn.addEventListener('click', resetForm);
+    elements.clearHistoryBtn.addEventListener('click', clearHistory);
+    elements.exportBtn.addEventListener('click', exportCalculation);
+    elements.exportHistoryBtn.addEventListener('click', exportHistory);
     
+    // Добавляем debounce для частых операций
+    const debouncedUpdateVolume = debounce(updateVolume, 300);
     ['length', 'width', 'height'].forEach(id => {
-        document.getElementById(id).addEventListener('input', updateVolume);
+        document.getElementById(id).addEventListener('input', debouncedUpdateVolume);
     });
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }
 
 function loadExcelFile(filename) {
     fetch(filename)
         .then(response => {
-            if (!response.ok) throw new Error('Файл не найден');
+            if (!response.ok) throw new Error('Файл тарифов не найден');
             return response.arrayBuffer();
         })
         .then(data => parseExcelData(data))
         .catch(error => {
+            console.error('Ошибка загрузки файла:', error);
             showNotification('Ошибка загрузки файла тарифов', 'error');
         });
 }
@@ -41,7 +119,6 @@ function parseExcelData(data) {
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetNames = workbook.SheetNames;
         
-        // Находим актуальную вкладку на основе дат
         const commissionSheet = findActualCommissionSheet(sheetNames, workbook);
         
         if (!commissionSheet) {
@@ -51,22 +128,40 @@ function parseExcelData(data) {
 
         const jsonData = XLSX.utils.sheet_to_json(commissionSheet.sheet, { header: 1 });
         
-        if (jsonData.length > 1) {
-            const headers = jsonData[0];
-            tariffData = jsonData.slice(1).map(row => {
-                const obj = {};
-                headers.forEach((header, index) => {
-                    obj[header] = row[index] || '';
-                });
-                return obj;
-            });
-            
-            populateCategories();
-            showNotification(`Загружены тарифы из вкладки: ${commissionSheet.name}`, 'success');
+        if (jsonData.length < 2) {
+            throw new Error('Excel файл не содержит данных');
         }
+
+        const headers = validateExcelHeaders(jsonData[0]);
+        tariffData = jsonData.slice(1).map(row => createTariffObject(row, headers));
+        
+        populateCategories();
+        showNotification(`Загружены тарифы из вкладки: ${commissionSheet.name}`, 'success');
     } catch (error) {
+        console.error('Ошибка парсинга Excel:', error);
         showNotification('Ошибка при чтении файла тарифов', 'error');
     }
+}
+
+function validateExcelHeaders(headers) {
+    const requiredHeaders = ['Категория', 'FBO до 100 руб.', 'FBO свыше 100 до 300 руб.'];
+    const missingHeaders = requiredHeaders.filter(header => 
+        !headers.includes(header)
+    );
+    
+    if (missingHeaders.length > 0) {
+        throw new Error(`Отсутствуют обязательные колонки: ${missingHeaders.join(', ')}`);
+    }
+    
+    return headers;
+}
+
+function createTariffObject(row, headers) {
+    const obj = {};
+    headers.forEach((header, index) => {
+        obj[header] = row[index] || '';
+    });
+    return obj;
 }
 
 function findActualCommissionSheet(sheetNames, workbook) {
@@ -76,23 +171,18 @@ function findActualCommissionSheet(sheetNames, workbook) {
     let actualSheet = null;
     let actualSheetDate = null;
     
-    // Регулярное выражение для поиска дат в формате DD.MM.YYYY
     const dateRegex = /(\d{1,2})\.(\d{1,2})\.(\d{4})/;
     
     sheetNames.forEach(sheetName => {
-        // Ищем вкладки, которые содержат "Комиссии с" или "Комиссия с"
         if (sheetName.includes('Комиссии с') || sheetName.includes('Комиссия с')) {
             const match = sheetName.match(dateRegex);
             
             if (match) {
                 const [, day, month, year] = match;
-                // Создаем дату из найденных компонентов (месяц в JS от 0 до 11)
                 const sheetDate = new Date(year, month - 1, day);
                 sheetDate.setHours(0, 0, 0, 0);
                 
-                // Проверяем, что дата вкладки не превышает текущую дату
                 if (sheetDate <= today) {
-                    // Выбираем самую актуальную вкладку (с самой поздней датой)
                     if (!actualSheetDate || sheetDate > actualSheetDate) {
                         actualSheetDate = sheetDate;
                         actualSheet = {
@@ -106,7 +196,6 @@ function findActualCommissionSheet(sheetNames, workbook) {
         }
     });
     
-    // Если не нашли подходящую вкладку, используем первую
     if (!actualSheet && sheetNames.length > 0) {
         actualSheet = {
             name: sheetNames[0],
@@ -120,8 +209,9 @@ function findActualCommissionSheet(sheetNames, workbook) {
 }
 
 function populateCategories() {
-    const categorySelect = document.getElementById('category');
-    categorySelect.innerHTML = '<option value="">Выберите категорию</option>';
+    if (!elements.category) return;
+    
+    elements.category.innerHTML = '<option value="">Выберите категорию</option>';
     
     if (!tariffData || tariffData.length === 0) return;
     
@@ -133,113 +223,150 @@ function populateCategories() {
         const option = document.createElement('option');
         option.value = category;
         option.textContent = category;
-        categorySelect.appendChild(option);
+        elements.category.appendChild(option);
     });
 }
 
 function updateVolume() {
-    const length = parseFloat(document.getElementById('length').value) || 0;
-    const width = parseFloat(document.getElementById('width').value) || 0;
-    const height = parseFloat(document.getElementById('height').value) || 0;
+    const length = parseFloat(elements.length.value) || 0;
+    const width = parseFloat(elements.width.value) || 0;
+    const height = parseFloat(elements.height.value) || 0;
+    
+    if (length < 0 || width < 0 || height < 0) {
+        showNotification('Размеры не могут быть отрицательными', 'warning');
+        return;
+    }
+    
     const volume = (length * width * height) / 1000;
-    document.getElementById('volumeValue').textContent = volume.toFixed(1);
+    elements.volumeValue.textContent = volume.toFixed(1);
 }
 
 function calculate() {
-    const category = document.getElementById('category').value;
-    const price = parseFloat(document.getElementById('price').value);
-    const purchasePrice = parseFloat(document.getElementById('purchasePrice').value);
-    const deliveryCost = parseFloat(document.getElementById('deliveryCost').value) || 0;
-    const packagingCost = parseFloat(document.getElementById('packagingCost').value) || 0;
-    const quantity = parseInt(document.getElementById('quantity').value);
-    const weight = parseFloat(document.getElementById('weight').value) || 1;
-    const redemptionRate = parseFloat(document.getElementById('redemptionRate').value) || 80;
-    const advertisingPercent = parseFloat(document.getElementById('advertisingPercent').value) || 0;
+    const inputData = getInputData();
+    
+    if (!validateInputs(inputData)) return;
 
-    if (!validateInputs(category, price, purchasePrice, quantity)) return;
-
-    const tariff = findTariffForCategory(category);
+    const tariff = findTariffForCategory(inputData.category);
     if (!tariff) return;
 
-    // Расчет себестоимости
-    const costPrice = purchasePrice + deliveryCost + packagingCost;
-
-    // Расчет комиссии Ozon
-    const commissionPercent = calculateCommission(tariff, price);
-    const commissionAmount = price * commissionPercent / 100;
-
-    // Расчет дополнительных расходов
-    const acquiringAmount = price * 0.015;
-    const advertisingAmount = price * advertisingPercent / 100;
-    
-    // Расчет логистики
-    const logisticCost = calculateLogistic(weight);
-    const customerDelivery = 25;
-    const totalLogistic = logisticCost + customerDelivery;
-
-    // Итоговые расчеты
-    const totalOzonExpenses = commissionAmount + acquiringAmount + advertisingAmount + totalLogistic;
-    const revenueAfterOzon = price - totalOzonExpenses;
-    const tax = revenueAfterOzon * 0.06;
-    const profitPerUnit = revenueAfterOzon - costPrice - tax;
-    const margin = (profitPerUnit / price) * 100;
-    
-    const expectedSales = Math.round(quantity * redemptionRate / 100);
-    const batchProfit = profitPerUnit * expectedSales;
-
-    displayResults(
-        purchasePrice, deliveryCost, packagingCost, costPrice,
-        commissionAmount, commissionPercent, acquiringAmount, advertisingAmount,
-        logisticCost, customerDelivery, totalLogistic,
-        price, totalOzonExpenses, tax, profitPerUnit, margin, batchProfit
-    );
-
-    saveToHistory(category, price, purchasePrice, profitPerUnit, quantity, batchProfit);
+    const calculationResult = performCalculations(inputData, tariff);
+    displayResults(calculationResult);
+    saveToHistory(inputData, calculationResult);
 }
 
-function validateInputs(category, price, purchasePrice, quantity) {
+function getInputData() {
+    return {
+        category: elements.category.value,
+        price: parseFloat(elements.price.value),
+        purchasePrice: parseFloat(elements.purchasePrice.value),
+        deliveryCost: parseFloat(elements.deliveryCost.value) || 0,
+        packagingCost: parseFloat(elements.packagingCost.value) || 0,
+        quantity: parseInt(elements.quantity.value),
+        weight: parseFloat(elements.weight.value) || 1,
+        redemptionRate: parseFloat(elements.redemptionRate.value) || 80,
+        advertisingPercent: parseFloat(elements.advertisingPercent.value) || 0
+    };
+}
+
+function validateInputs(inputData) {
+    const { category, price, purchasePrice, quantity, weight, redemptionRate, advertisingPercent } = inputData;
+    
     if (!category) {
         showNotification('Выберите категорию товара', 'error');
         return false;
     }
-    if (!price || price <= 0) {
-        showNotification('Введите корректную цену продажи', 'error');
+    
+    if (!price || price <= 0 || price > 1000000) {
+        showNotification('Введите корректную цену продажи (1 - 1 000 000 руб.)', 'error');
         return false;
     }
-    if (!purchasePrice || purchasePrice <= 0) {
-        showNotification('Введите корректную закупочную цену', 'error');
+    
+    if (!purchasePrice || purchasePrice <= 0 || purchasePrice > 1000000) {
+        showNotification('Введите корректную закупочную цену (1 - 1 000 000 руб.)', 'error');
         return false;
     }
-    if (!quantity || quantity <= 0) {
-        showNotification('Введите корректное количество', 'error');
+    
+    if (!quantity || quantity <= 0 || quantity > 100000) {
+        showNotification('Введите корректное количество (1 - 100 000 шт.)', 'error');
         return false;
     }
+    
+    if (weight < 0.1 || weight > 100) {
+        showNotification('Введите корректный вес (0.1 - 100 кг)', 'error');
+        return false;
+    }
+    
+    if (redemptionRate < 0 || redemptionRate > 100) {
+        showNotification('Введите корректный процент выкупа (0-100%)', 'error');
+        return false;
+    }
+    
+    if (advertisingPercent < 0 || advertisingPercent > 100) {
+        showNotification('Введите корректный процент на рекламу (0-100%)', 'error');
+        return false;
+    }
+    
     if (tariffData.length === 0) {
         showNotification('Тарифы не загружены', 'error');
         return false;
     }
+    
     return true;
 }
 
 function findTariffForCategory(category) {
     const tariff = tariffData.find(item => item['Категория'] === category);
-    if (!tariff) showNotification(`Не найден тариф для категории: ${category}`, 'error');
+    if (!tariff) {
+        showNotification(`Не найден тариф для категории: ${category}`, 'error');
+        return null;
+    }
     return tariff;
 }
 
+function performCalculations(inputData, tariff) {
+    const costPrice = calculateCostPrice(inputData);
+    const commission = calculateCommission(tariff, inputData.price);
+    const additionalCosts = calculateAdditionalCosts(inputData);
+    const logistic = calculateLogisticCost(inputData.weight);
+    const financials = calculateFinancials(inputData, costPrice, commission, additionalCosts, logistic);
+    
+    return {
+        ...inputData,
+        costPrice,
+        commission,
+        additionalCosts,
+        logistic,
+        ...financials
+    };
+}
+
+function calculateCostPrice(inputData) {
+    return inputData.purchasePrice + inputData.deliveryCost + inputData.packagingCost;
+}
+
 function calculateCommission(tariff, price) {
-    let commissionKey = '';
-    
-    if (price <= 100) commissionKey = 'FBO до 100 руб.';
-    else if (price <= 300) commissionKey = 'FBO свыше 100 до 300 руб.';
-    else if (price <= 500) commissionKey = 'FBO свыше 300 до 500 руб.';
-    else if (price <= 1500) commissionKey = 'FBO свыше 500 до 1500 руб.';
-    else commissionKey = 'FBO свыше 1500 руб.';
-    
+    const commissionKey = getCommissionKey(price);
     const commissionValue = tariff[commissionKey];
-    if (!commissionValue) return 15;
     
-    const commissionStr = commissionValue.toString()
+    if (!commissionValue) return { percent: 15, amount: price * 0.15 };
+    
+    const commissionPercent = parseCommissionValue(commissionValue);
+    return {
+        percent: commissionPercent,
+        amount: price * commissionPercent / 100
+    };
+}
+
+function getCommissionKey(price) {
+    if (price <= 100) return 'FBO до 100 руб.';
+    if (price <= 300) return 'FBO свыше 100 до 300 руб.';
+    if (price <= 500) return 'FBO свыше 300 до 500 руб.';
+    if (price <= 1500) return 'FBO свыше 500 до 1500 руб.';
+    return 'FBO свыше 1500 руб.';
+}
+
+function parseCommissionValue(value) {
+    const commissionStr = value.toString()
         .replace('%', '')
         .replace(',', '.')
         .trim();
@@ -247,74 +374,128 @@ function calculateCommission(tariff, price) {
     return parseFloat(commissionStr) || 15;
 }
 
-function calculateLogistic(weight) {
-    if (weight <= 0.5) return 40;
-    if (weight <= 1) return 50;
-    if (weight <= 2) return 70;
-    if (weight <= 5) return 120;
-    if (weight <= 10) return 200;
-    return 300;
+function calculateAdditionalCosts(inputData) {
+    const acquiringAmount = inputData.price * APP_CONFIG.ACQUIRING_RATE;
+    const advertisingAmount = inputData.price * inputData.advertisingPercent / 100;
+    
+    return {
+        acquiringAmount,
+        advertisingAmount,
+        total: acquiringAmount + advertisingAmount
+    };
 }
 
-function displayResults(
-    purchasePrice, deliveryCost, packagingCost, costPrice,
-    commissionAmount, commissionPercent, acquiringAmount, advertisingAmount,
-    logisticCost, customerDelivery, totalLogistic,
-    price, totalOzonExpenses, tax, profitPerUnit, margin, batchProfit
-) {
-    document.getElementById('resultPurchase').textContent = `${purchasePrice.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultDelivery').textContent = `${deliveryCost.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultPackaging').textContent = `${packagingCost.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultCostPrice').textContent = `${costPrice.toLocaleString('ru-RU')} ₽`;
+function calculateLogisticCost(weight) {
+    const tier = APP_CONFIG.LOGISTIC_TIERS.find(t => weight <= t.maxWeight);
+    const logisticCost = tier ? tier.cost : 300;
+    
+    return {
+        logisticCost,
+        customerDelivery: APP_CONFIG.CUSTOMER_DELIVERY,
+        total: logisticCost + APP_CONFIG.CUSTOMER_DELIVERY
+    };
+}
+
+function calculateFinancials(inputData, costPrice, commission, additionalCosts, logistic) {
+    const totalOzonExpenses = commission.amount + additionalCosts.total + logistic.total;
+    const revenueAfterOzon = inputData.price - totalOzonExpenses;
+    const tax = revenueAfterOzon * APP_CONFIG.TAX_RATE;
+    const profitPerUnit = revenueAfterOzon - costPrice - tax;
+    const margin = (profitPerUnit / inputData.price) * 100;
+    
+    const expectedSales = Math.round(inputData.quantity * inputData.redemptionRate / 100);
+    const batchProfit = profitPerUnit * expectedSales;
+
+    return {
+        totalOzonExpenses,
+        revenueAfterOzon,
+        tax,
+        profitPerUnit,
+        margin,
+        expectedSales,
+        batchProfit
+    };
+}
+
+function displayResults(results) {
+    const formatter = new Intl.NumberFormat('ru-RU', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+
+    document.getElementById('resultPurchase').textContent = `${formatter.format(results.purchasePrice)} ₽`;
+    document.getElementById('resultDelivery').textContent = `${formatter.format(results.deliveryCost)} ₽`;
+    document.getElementById('resultPackaging').textContent = `${formatter.format(results.packagingCost)} ₽`;
+    document.getElementById('resultCostPrice').textContent = `${formatter.format(results.costPrice)} ₽`;
     
     document.getElementById('resultCommission').textContent = 
-        `${commissionAmount.toLocaleString('ru-RU')} ₽ (${commissionPercent.toFixed(2)}%)`;
-    document.getElementById('resultAcquiring').textContent = `${acquiringAmount.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultAdvertising').textContent = `${advertisingAmount.toLocaleString('ru-RU')} ₽`;
+        `${formatter.format(results.commission.amount)} ₽ (${results.commission.percent.toFixed(2)}%)`;
+    document.getElementById('resultAcquiring').textContent = `${formatter.format(results.additionalCosts.acquiringAmount)} ₽`;
+    document.getElementById('resultAdvertising').textContent = `${formatter.format(results.additionalCosts.advertisingAmount)} ₽`;
     
-    document.getElementById('resultLogistic').textContent = `${logisticCost.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultCustomerDelivery').textContent = `${customerDelivery.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultTotalLogistic').textContent = `${totalLogistic.toLocaleString('ru-RU')} ₽`;
+    document.getElementById('resultLogistic').textContent = `${formatter.format(results.logistic.logisticCost)} ₽`;
+    document.getElementById('resultCustomerDelivery').textContent = `${formatter.format(results.logistic.customerDelivery)} ₽`;
+    document.getElementById('resultTotalLogistic').textContent = `${formatter.format(results.logistic.total)} ₽`;
     
-    document.getElementById('resultRevenue').textContent = `${price.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultTotalExpenses').textContent = `${totalOzonExpenses.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultTax').textContent = `${tax.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultProfitPerUnit').textContent = `${profitPerUnit.toLocaleString('ru-RU')} ₽`;
-    document.getElementById('resultMargin').textContent = `${margin.toFixed(1)}%`;
-    document.getElementById('resultBatchProfit').textContent = `${batchProfit.toLocaleString('ru-RU')} ₽`;
+    document.getElementById('resultRevenue').textContent = `${formatter.format(results.price)} ₽`;
+    document.getElementById('resultTotalExpenses').textContent = `${formatter.format(results.totalOzonExpenses)} ₽`;
+    document.getElementById('resultTax').textContent = `${formatter.format(results.tax)} ₽`;
+    document.getElementById('resultProfitPerUnit').textContent = `${formatter.format(results.profitPerUnit)} ₽`;
+    document.getElementById('resultMargin').textContent = `${results.margin.toFixed(1)}%`;
+    document.getElementById('resultBatchProfit').textContent = `${formatter.format(results.batchProfit)} ₽`;
 }
 
-function saveToHistory(category, price, purchasePrice, profitPerUnit, quantity, batchProfit) {
+function saveToHistory(inputData, calculationResult) {
     const calculation = {
         id: Date.now(),
-        category: category,
-        price: price,
-        purchasePrice: purchasePrice,
-        profitPerUnit: Math.round(profitPerUnit),
-        quantity: quantity,
-        batchProfit: Math.round(batchProfit),
+        category: inputData.category,
+        price: inputData.price,
+        purchasePrice: inputData.purchasePrice,
+        profitPerUnit: Math.round(calculationResult.profitPerUnit),
+        quantity: inputData.quantity,
+        batchProfit: Math.round(calculationResult.batchProfit),
         date: new Date().toLocaleString('ru-RU')
     };
     
     calculationHistory.unshift(calculation);
-    localStorage.setItem('calculationHistory', JSON.stringify(calculationHistory));
-    renderHistory();
+    
+    // Ограничиваем размер истории
+    if (calculationHistory.length > APP_CONFIG.MAX_HISTORY_SIZE) {
+        calculationHistory = calculationHistory.slice(0, APP_CONFIG.MAX_HISTORY_SIZE);
+    }
+    
+    try {
+        localStorage.setItem('calculationHistory', JSON.stringify(calculationHistory));
+        renderHistory();
+        showNotification('Расчет сохранен в историю', 'success');
+    } catch (error) {
+        console.error('Ошибка сохранения в localStorage:', error);
+        showNotification('Ошибка сохранения истории', 'error');
+    }
 }
 
 function loadCalculationHistory() {
-    const saved = localStorage.getItem('calculationHistory');
-    if (saved) {
-        calculationHistory = JSON.parse(saved);
-        renderHistory();
+    try {
+        const saved = localStorage.getItem('calculationHistory');
+        if (saved) {
+            calculationHistory = JSON.parse(saved);
+            renderHistory();
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки истории:', error);
+        calculationHistory = [];
+        showNotification('Ошибка загрузки истории расчетов', 'error');
     }
 }
 
 function renderHistory() {
-    const tbody = document.getElementById('historyBody');
-    tbody.innerHTML = '';
+    if (!elements.historyBody) return;
+    
+    elements.historyBody.innerHTML = '';
     
     if (calculationHistory.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #666;">История расчетов пуста</td></tr>';
+        elements.historyBody.innerHTML = 
+            '<tr><td colspan="6" style="text-align: center; color: #666;">История расчетов пуста</td></tr>';
         return;
     }
     
@@ -328,33 +509,42 @@ function renderHistory() {
             <td>${calc.quantity} шт</td>
             <td>${calc.date}</td>
         `;
-        tbody.appendChild(row);
+        elements.historyBody.appendChild(row);
     });
 }
 
 function clearHistory() {
-    if (calculationHistory.length === 0) return;
+    if (calculationHistory.length === 0) {
+        showNotification('История уже пуста', 'info');
+        return;
+    }
+    
     if (confirm('Очистить всю историю расчетов?')) {
         calculationHistory = [];
-        localStorage.removeItem('calculationHistory');
-        renderHistory();
-        showNotification('История очищена', 'success');
+        try {
+            localStorage.removeItem('calculationHistory');
+            renderHistory();
+            showNotification('История очищена', 'success');
+        } catch (error) {
+            console.error('Ошибка очистки истории:', error);
+            showNotification('Ошибка очистки истории', 'error');
+        }
     }
 }
 
 function resetForm() {
-    document.getElementById('price').value = '';
-    document.getElementById('purchasePrice').value = '';
-    document.getElementById('deliveryCost').value = '';
-    document.getElementById('packagingCost').value = '';
-    document.getElementById('quantity').value = '1';
-    document.getElementById('weight').value = '';
-    document.getElementById('length').value = '';
-    document.getElementById('width').value = '';
-    document.getElementById('height').value = '';
-    document.getElementById('redemptionRate').value = '80';
-    document.getElementById('advertisingPercent').value = '5';
-    document.getElementById('volumeValue').textContent = '0';
+    elements.price.value = '';
+    elements.purchasePrice.value = '';
+    elements.deliveryCost.value = '';
+    elements.packagingCost.value = '';
+    elements.quantity.value = '1';
+    elements.weight.value = '';
+    elements.length.value = '';
+    elements.width.value = '';
+    elements.height.value = '';
+    elements.redemptionRate.value = '80';
+    elements.advertisingPercent.value = '5';
+    elements.volumeValue.textContent = '0';
     
     showNotification('Форма сброшена', 'info');
 }
@@ -365,12 +555,17 @@ function exportCalculation() {
         return;
     }
     
-    const data = [calculationHistory[0]];
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Расчет');
-    XLSX.writeFile(workbook, `calculation_${new Date().getTime()}.xlsx`);
-    showNotification('Расчет экспортирован', 'success');
+    try {
+        const data = [calculationHistory[0]];
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Расчет');
+        XLSX.writeFile(workbook, `calculation_${new Date().getTime()}.xlsx`);
+        showNotification('Расчет экспортирован', 'success');
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        showNotification('Ошибка при экспорте расчета', 'error');
+    }
 }
 
 function exportHistory() {
@@ -379,16 +574,24 @@ function exportHistory() {
         return;
     }
     
-    const worksheet = XLSX.utils.json_to_sheet(calculationHistory);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'История расчетов');
-    XLSX.writeFile(workbook, `history_${new Date().getTime()}.xlsx`);
-    showNotification('История экспортирована', 'success');
+    try {
+        const worksheet = XLSX.utils.json_to_sheet(calculationHistory);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'История расчетов');
+        XLSX.writeFile(workbook, `history_${new Date().getTime()}.xlsx`);
+        showNotification('История экспортирована', 'success');
+    } catch (error) {
+        console.error('Ошибка экспорта истории:', error);
+        showNotification('Ошибка при экспорте истории', 'error');
+    }
 }
 
 function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.textContent = message;
+    notification.setAttribute('role', 'alert');
+    notification.setAttribute('aria-live', 'polite');
+    
     notification.style.cssText = `
         position: fixed;
         top: 20px;
@@ -400,13 +603,31 @@ function showNotification(message, type = 'info') {
         font-weight: 500;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         max-width: 300px;
+        transition: transform 0.3s ease, opacity 0.3s ease;
+        transform: translateX(100%);
+        opacity: 0;
     `;
     
-    if (type === 'success') notification.style.background = '#27ae60';
-    else if (type === 'error') notification.style.background = '#e74c3c';
-    else if (type === 'warning') notification.style.background = '#f39c12';
-    else notification.style.background = '#3498db';
+    const typeStyles = {
+        success: '#27ae60',
+        error: '#e74c3c',
+        warning: '#f39c12',
+        info: '#3498db'
+    };
+    
+    notification.style.background = typeStyles[type] || typeStyles.info;
     
     document.body.appendChild(notification);
-    setTimeout(() => notification.remove(), 5000);
+    
+    // Анимация появления
+    requestAnimationFrame(() => {
+        notification.style.transform = 'translateX(0)';
+        notification.style.opacity = '1';
+    });
+    
+    setTimeout(() => {
+        notification.style.transform = 'translateX(100%)';
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 300);
+    }, 5000);
 }
